@@ -1,162 +1,87 @@
-# ics0022
-# Password Manager
+# passmgr — CLI password manager (ICS0022)
 
-A command-line password manager developed as a security-focused university project.
+A local, offline command-line password manager. Credentials are encrypted at rest with
+AES-256-GCM; the vault is unlocked only by a master password (Argon2id). The interface never
+prints stored passwords to the screen.
 
-## Scope
+> Status: **Checkpoint 2** (core requirements). See [PROGRESS.md](PROGRESS.md).
 
-The application will securely store user credentials in an encrypted vault.
+## Requirements
 
-The initial version will include:
+- Python 3.9 or newer
+- Linux or macOS (Windows works, but file-permission and symlink checks are POSIX-only)
 
-* Master password authentication
-* Secure key derivation using Argon2id
-* Vault encryption using AES-256-GCM
-* Encrypted local vault storage
-* Adding, viewing, editing and deleting password entries
-* Basic input validation
-* Locking the vault when it is no longer needed
-
-The initial version will not include:
-
-* Cloud synchronization
-* Multi-device synchronization
-* Browser extensions
-* Password sharing
-* Hardware security modules (HSM)
-
-## Planned Commands
-
-The command-line interface is planned to support:
-
-| Command  | Description                                |
-| -------- | ------------------------------------------ |
-| `init`   | Create a new password vault                |
-| `unlock` | Unlock the vault using the master password |
-| `add`    | Add a new password entry                   |
-| `list`   | List stored entries                        |
-| `get`    | View a specific password entry             |
-| `edit`   | Edit an existing entry                     |
-| `delete` | Delete an entry                            |
-| `lock`   | Lock the vault                             |
-| `exit`   | Exit the application                       |
-
-## Planned Screens / Interface
-
-The application will initially use a CLI interface.
-
-Planned screens:
-
-1. **Main menu**
-
-   * Unlock vault
-   * Create vault
-   * Exit
-
-2. **Unlocked vault menu**
-
-   * Add entry
-   * List entries
-   * Get entry
-   * Edit entry
-   * Delete entry
-   * Lock vault
-   * Exit
-
-3. **Password input**
-
-   * Master password input will not be displayed in plaintext.
-
-## Architecture
-
-The system is divided into four main modules:
-
-* **User Management Module** – handles master password authentication and key derivation.
-* **Encryption Module** – encrypts and decrypts the vault using AES-256-GCM.
-* **Storage Layer** – reads and writes the encrypted vault file.
-* **User Interface** – provides the command-line interface.
-
-The general data flow is:
-
-`Master Password → Argon2id → Encryption Key → AES-256-GCM → Encrypted Vault → vault.enc`
-
-## Vault Format
-
-The vault will be stored as an encrypted file named `vault.enc`.
-
-The encrypted file will contain:
-
-* Format/version information
-* Argon2id parameters
-* Random salt
-* Random nonce
-* Ciphertext
-* Authentication tag
-
-The plaintext vault data will use a structured format such as JSON before encryption.
-
-## Cryptographic Design
-
-The planned cryptographic scheme is:
-
-**Argon2id → 256-bit key → AES-256-GCM**
-
-A unique random salt will be generated for each vault. AES-GCM will provide both confidentiality and integrity protection.
-
-The master password itself will not be stored in the vault.
-
-## Build and Run
-
-The project is planned to use CMake.
-
-Example build commands:
+## Build and run (clean machine)
 
 ```bash
-mkdir build
-cd build
-cmake ..
-cmake --build .
+git clone https://github.com/Xnogst/ics0022.git
+cd ics0022
+
+python3 -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+python -m passmgr init               # create a vault
+python -m passmgr add github -u alice
+python -m passmgr list
+python -m passmgr get github --copy  # password goes to the clipboard, not the screen
 ```
 
-Run the application with:
+Run the tests:
 
 ```bash
-./password-manager
+python -m unittest discover -v
 ```
 
-On Windows, the executable may be run from the generated build directory.
+## Commands
 
-## Repository Structure
+| Command | Description |
+|---|---|
+| `init` | Create a new vault (asks for the master password twice) |
+| `add SERVICE [-u USER] [--generate] [--length N] [--notes TEXT] [--force]` | Add an entry. The password is typed hidden, or generated with `--generate` and never displayed |
+| `list` | List service names and usernames |
+| `get SERVICE [--copy] [--timeout S]` | Show username/notes; the password is shown as `********`. `--copy` puts it in the clipboard and clears it after 20 s |
+| `delete SERVICE [--yes]` | Delete an entry (asks for confirmation) |
+| `passwd` | Change the master password (re-wraps the master key; vault file untouched) |
 
-```text
-password-manager/
-├── README.md
-├── DESIGN.md
-├── .gitignore
-├── src/
-│   ├── main.cpp
-│   ├── encryption/
-│   │   ├── encryption.cpp
-│   │   └── encryption.h
-│   ├── user/
-│   │   ├── user.cpp
-│   │   └── user.h
-│   ├── storage/
-│   │   ├── storage.cpp
-│   │   └── storage.h
-│   └── interface/
-│       ├── cli.cpp
-│       └── cli.h
-├── tests/
-└── vault/
-    └── .gitkeep
+Global option: `--dir PATH` (or env `PASSMGR_DIR`) selects the data directory; default `~/.config/passmgr`.
+
+`--copy` needs one of `pbcopy`, `wl-copy`, `xclip`, `xsel` or `clip`. If none is installed, the command
+fails instead of printing the password.
+
+## Design summary
+
+```
+master password --Argon2id(t=3, m=64 MiB, p=4, 16-byte salt)--> KEK
+KEK --AES-256-GCM--> wraps random 256-bit Master Key (MK)   -> keystore.json
+MK  --AES-256-GCM (fresh 12-byte IV per save)--> vault JSON -> vault.enc
 ```
 
-## Security Assumptions
+- `keystore.json`: version, salt, KDF parameters, IV, wrapped MK. KDF parameters and salt are
+  bound as AEAD associated data; minimum **and maximum** bounds are enforced when loading.
+- `vault.enc`: `"PMVR"` | version | 3 reserved bytes | 12-byte IV | ciphertext | 16-byte tag.
+  The 8 header bytes are authenticated as AAD.
+- All files are 0600 in a 0700 directory, opened with `O_NOFOLLOW`, checked with `fstat()`,
+  and written atomically (temp file, `fsync`, `os.replace`).
+- Every unlock failure (wrong password, tampering, malformed file) prints the same message:
+  `Authentication failed or corrupted vault.`
+- Core dumps are disabled; unexpected errors print a generic message without a stack trace.
 
-The initial threat model assumes that the operating system and application environment are not completely compromised.
+## Source layout
 
-Kernel-level malware, hardware keyloggers, fully compromised operating systems and physical attacks are outside the initial scope.
+```
+passmgr/
+  cli.py        argparse commands, hidden prompts, clipboard, error handling
+  keystore.py   Argon2id KEK, MK wrap/unwrap, password policy, KDF bounds
+  vault.py      vault file format, entry operations, store orchestration
+  safeio.py     symlink-safe reads, permissions, atomic writes
+  crypto.py     the only module that calls cryptography / argon2
+tests/          unit and CLI tests (python -m unittest discover)
+```
 
-The design will minimize the amount of time that decrypted vault data remains in memory.
+## Known limitations
 
+- Zeroizing keys in Python is best-effort (`bytes` are immutable; libraries copy keys internally).
+- No protection against rollback to an older valid `vault.enc`.
+- `passwd` re-wraps the same Master Key; it does not rotate it.
+- A compromised OS (keyloggers, root memory scraping) is out of scope.
