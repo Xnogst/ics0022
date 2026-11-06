@@ -4,8 +4,6 @@ A local, offline command-line password manager. Credentials are encrypted at res
 AES-256-GCM; the vault is unlocked only by a master password (Argon2id). The interface never
 prints stored passwords to the screen.
 
-> Status: **Checkpoint 2** (core requirements). See [PROGRESS.md](PROGRESS.md).
-
 ## Requirements
 
 - Python 3.9 or newer
@@ -21,10 +19,10 @@ python3 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python -m passmgr init               # create a vault
+python -m passmgr init
 python -m passmgr add github -u alice
 python -m passmgr list
-python -m passmgr get github --copy  # password goes to the clipboard, not the screen
+python -m passmgr get github --copy
 ```
 
 Run the tests:
