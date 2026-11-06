@@ -1,10 +1,3 @@
-"""Vault: credential storage, AES-256-GCM (de)serialisation and store orchestration.
-
-vault.enc layout (all authenticated):
-    magic "PMVR" (4) | version (1) | reserved (3) | iv (12) | ciphertext | tag (16)
-The first 8 header bytes are passed as AAD, so the header cannot be altered.
-"""
-
 import json
 import os
 import time
@@ -14,8 +7,8 @@ from .crypto import AuthFailure
 
 MAGIC = b"PMVR"
 VERSION = 1
-HEADER = MAGIC + bytes([VERSION]) + b"\x00\x00\x00"  # 8 bytes, used as AAD
-HEADER_LEN = len(HEADER) + crypto.IV_LEN  # 20
+HEADER = MAGIC + bytes([VERSION]) + b"\x00\x00\x00"
+HEADER_LEN = len(HEADER) + crypto.IV_LEN
 KEYSTORE_NAME = "keystore.json"
 VAULT_NAME = "vault.enc"
 
@@ -24,10 +17,6 @@ MAX_FIELD_LEN = 1024
 
 
 class UserError(Exception):
-    """A problem the user can fix; message is safe to show."""
-
-
-# ---------- vault file (de)serialisation ----------
 
 def new_payload() -> dict:
     return {"version": 1, "entries": {}}
@@ -35,7 +24,7 @@ def new_payload() -> dict:
 
 def encrypt_vault(mk, payload: dict) -> bytes:
     plaintext = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    iv, ct = crypto.encrypt(mk, plaintext, HEADER)  # fresh random IV every save
+    iv, ct = crypto.encrypt(mk, plaintext, HEADER)
     return HEADER + iv + ct
 
 
@@ -52,8 +41,6 @@ def decrypt_vault(mk, blob: bytes) -> dict:
         raise AuthFailure(crypto.GENERIC_AUTH_ERROR) from None
     return payload
 
-
-# ---------- entry validation and operations ----------
 
 def _check_text(value: str, what: str, max_len: int, required: bool) -> str:
     if not isinstance(value, str):
@@ -102,10 +89,8 @@ def list_entries(payload: dict):
     return sorted((name, e.get("username", "")) for name, e in payload["entries"].items())
 
 
-# ---------- on-disk store ----------
 
 class Session:
-    """An unlocked vault. Holds the MK and decrypted payload only in RAM."""
 
     def __init__(self, directory: str, mk: bytearray, payload: dict):
         self.directory = directory
@@ -174,4 +159,4 @@ def change_password(directory: str, old_password: str, new_password: str) -> Non
     ks_path, _ = _paths(directory)
     ks = keystore.loads(safeio.read_private_file(ks_path))
     new_ks = keystore.rewrap(ks, old_password, new_password)
-    safeio.atomic_write_private(ks_path, keystore.dumps(new_ks))  # vault untouched
+    safeio.atomic_write_private(ks_path, keystore.dumps(new_ks))
