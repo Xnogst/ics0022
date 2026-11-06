@@ -1,4 +1,4 @@
-# Checkpoint 2 — progress note
+# Checkpoint 2 - progress note
 
 **Project:** passmgr, a CLI password manager (Python)
 
