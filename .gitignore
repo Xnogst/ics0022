@@ -1,7 +1,9 @@
-venv/
 __pycache__/
 *.pyc
+.venv/
+venv/
 .pytest_cache/
+# never commit real vaults or keystores
 keystore.json
 vault.enc
-*.db
+*.tmp
