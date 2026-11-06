@@ -1,5 +1,3 @@
-"""Safe file I/O: symlink-proof reads, 0600/0700 permissions, atomic writes."""
-
 import os
 import secrets
 import stat
@@ -11,14 +9,12 @@ MAX_FILE_SIZE = 16 * 1024 * 1024
 
 
 class SafeIOError(Exception):
-    """A file or directory failed a security check."""
 
 
 def ensure_private_dir(path: str) -> None:
-    """Create `path` with mode 0700 if missing, then verify it is ours and private."""
     if not os.path.lexists(path):
         os.makedirs(path, mode=0o700)
-    st = os.lstat(path)  # lstat: do not follow a symlink at the leaf
+    st = os.lstat(path) 
     if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
         raise SafeIOError(f"{path} is not a plain directory (symlinks are rejected).")
     if IS_POSIX:
@@ -31,12 +27,6 @@ def ensure_private_dir(path: str) -> None:
 
 
 def read_private_file(path: str) -> bytes:
-    """Read a file safely.
-
-    O_NOFOLLOW makes the open itself fail on a symlink, and every further check
-    uses fstat() on the open descriptor, so the file cannot be swapped between
-    check and use (TOCTOU).
-    """
     try:
         fd = os.open(path, os.O_RDONLY | NOFOLLOW | CLOEXEC)
     except FileNotFoundError:
@@ -60,7 +50,6 @@ def read_private_file(path: str) -> bytes:
 
 
 def atomic_write_private(path: str, data: bytes) -> None:
-    """Write `data` to `path` (mode 0600) via temp file + fsync + os.replace."""
     directory = os.path.dirname(path) or "."
     try:
         st = os.lstat(path)
@@ -78,7 +67,7 @@ def atomic_write_private(path: str, data: bytes) -> None:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)  # atomic; replaces a symlink itself, never its target
+        os.replace(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
