@@ -1,4 +1,4 @@
-# passmgr — CLI password manager (ICS0022)
+# passmgr - CLI password manager (ICS0022)
 
 A local, offline command-line password manager. Credentials are encrypted at rest with
 AES-256-GCM; the vault is unlocked only by a master password (Argon2id). The interface never
