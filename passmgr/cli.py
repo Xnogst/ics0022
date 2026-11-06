@@ -1,5 +1,3 @@
-"""Command-line interface. Passwords are read with getpass and never printed."""
-
 import argparse
 import getpass
 import os
@@ -18,10 +16,7 @@ DEFAULT_DIR = os.path.join("~", ".config", "passmgr")
 CLIPBOARD_SECONDS = 20
 
 
-# ---------- helpers ----------
-
 def harden_process() -> None:
-    """Private umask and no core dumps (threat K2)."""
     os.umask(0o077)
     try:
         import resource
@@ -56,7 +51,6 @@ def generate_password(length: int = 20) -> str:
 
 
 def _clipboard_command():
-    """Return an argv that reads text from stdin into the clipboard, or None."""
     candidates = [
         ["pbcopy"],
         ["wl-copy"],
@@ -74,7 +68,7 @@ def set_clipboard(text: str) -> bool:
     argv = _clipboard_command()
     if argv is None:
         return False
-    try:  # text goes through stdin, never through argv / the process list (A4)
+    try:
         subprocess.run(argv, input=text.encode("utf-8"), check=True, timeout=5,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
@@ -85,8 +79,6 @@ def set_clipboard(text: str) -> bool:
 def _directory(args) -> str:
     return os.path.abspath(os.path.expanduser(args.dir))
 
-
-# ---------- commands ----------
 
 def cmd_init(args) -> int:
     directory = _directory(args)
@@ -153,7 +145,7 @@ def cmd_get(args) -> int:
 def cmd_delete(args) -> int:
     master = read_secret("Master password: ")
     with vault.open_store(_directory(args), master) as session:
-        vault.get_entry(session.payload, args.service)  # fail early if missing
+        vault.get_entry(session.payload, args.service)
         if not args.yes:
             answer = input(f"Type the service name '{args.service.strip()}' to confirm deletion: ")
             if answer.strip() != args.service.strip():
@@ -171,8 +163,6 @@ def cmd_passwd(args) -> int:
     print("Master password changed. The vault itself was not modified.")
     return 0
 
-
-# ---------- entry point ----------
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="passmgr", description="Local encrypted password manager.")
@@ -223,6 +213,6 @@ def main(argv=None) -> int:
     except (UserError, keystore.PasswordPolicyError, safeio.SafeIOError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-    except Exception:  # no stack traces: they could expose secrets (O2)
+    except Exception:
         print("Error: the operation failed.", file=sys.stderr)
         return 1
